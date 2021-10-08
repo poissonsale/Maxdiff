@@ -1,0 +1,45 @@
+library(choiceDes) #maxdiff设计
+library(magrittr) #管道操作符
+library(dplyr) #数据结构处理
+
+
+#############################以下参数为测试数据，实际调用需要后端返回###############################
+object <- c('a','b','c','d','e','a2','b2','c2','d2','e2','a3','b3','c3','d3','e3','a4','b4','c4','d4','e4','a5','b5','c5','d5','e5') #每个题目的选项
+total <- 20       #总测试对象数量
+sample_num <- 400 #样本总量
+random <- 15 #随机从总测试对象抽取数量
+version <- 10 #版本
+question_num <- 15 #每个版本的题目数
+option_num <- 4 #每个题目的选项
+
+#抽样设计和全量设计分情况处理,setseed是为了使随机数运行代码每次都不改变
+if(total != random & version==1){
+  des_random <- matrix(nrow = sample_num,ncol = random)
+  for(i in 1:nrow(des_random)){
+    set.seed(i*1000)
+    des_random[i,] <- sample(object,random)
+  }
+  set.seed(123)
+  des_option_location <- tradeoff.des(random,option_num,version,question_num,)[[1]][,-c(1:3)] #maxdiff设计，数字是索引，不是实际编码
+  maxdiff_list <- list()
+  for(i in 1:nrow(des_random)){
+    maxdiff_list[[i]] <- des_option_location %>% as.data.frame() #目标格式
+  }
+  for(i in 1:length(maxdiff_list)){
+    for(j in 1:nrow(des_option_location)){
+      maxdiff_list[[i]][j,] <- des_random[i,des_option_location[j,]] #将随机抽取表的数据用maxdiff索引填充
+    }
+  }
+  output <- data.frame(maxdiff=rep(1:sample_num,each=question_num),version=1,task=rep(1:question_num,sample_num)) #随机抽取只有不同maxdiff，版本全为1
+  output <- bind_rows(maxdiff_list) %>% bind_cols(output,.) #最终输出格式
+}else{
+  set.seed(234)
+  des_option_location <- tradeoff.des(total,option_num,version,question_num)[[1]][,-c(1:3)] #maxdiff设计，数字是索引，不是实际编码
+  des_option <- des_option_location
+  for(i in 1:nrow(des_option)){
+    des_option[i,] <- object[des_option_location[i,]] #将随机抽取表的数据用maxdiff索引填充
+  }
+  output <- data.frame(maxdiff=1,version=rep(1:version,each=question_num),task=rep(1:question_num,version),des_option)
+}
+
+output
