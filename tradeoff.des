@@ -1,0 +1,117 @@
+######### tradeoff.des ##########
+
+library(choiceDes) #maxdiff设计
+library(magrittr) #管道操作符
+library(dplyr) #数据结构处理
+
+random <- 15       #总题目选项个数 各attributes个数的乘积
+option_num <- 4    #每个题目的选项
+version <- 10      #版本
+question_num <- 15 #每个版本的题目数
+
+items<- random; shown<-option_num; vers<-version; tasks<-question_num;
+fname = NULL
+Rd = 20
+Rc = NULL
+print = TRUE
+
+
+
+maxdiff<-function (items, shown, vers, tasks, fname = NULL, Rd = 20, Rc = NULL, print = TRUE) 
+{
+    ta <- Sys.time()
+    if (print) {
+        cat("tradeoff.des 0.9-2, ", date(), "\n")
+        flush.console()
+    }
+    drows <- vers * tasks                     #  所有组合总数=版本数*版本题目数
+    if (is.null(Rc)) {
+        Rc <- max(1000, 10 * drows)           #  迭代次数设定
+    }
+     # 生成随机组合 以题目选项个数为单位*版本题目数*版本数 所有数字出现的个数为题目选项个数*版本数
+    des.c <- tryCatch(optBlockC(factor(1:items), rep(shown, drows), 
+        nRepeats = Rd), error = function(e) return(NULL))   
+         
+    if (is.null(des.c)) {
+        stop("PROCEDURE STOPPED: Insufficient design space")
+    }
+    des.m <- t(matrix(des.c$rows, shown, drows))            # 初步构成随机表
+    crit <- drows * shown
+    crit.vec <- vector("numeric", Rc)
+    des.p <- des.m
+    # 把随机表每行打散 原本的顺序是由大到小
+    for (d in 1:drows) {
+        des.p[d, ] <- sample(des.p[d, ], shown)
+    }
+    cc <- 0
+    # 循环调整方差 不会调整组合顺序，只调整组合内的顺序
+    for (i in 1:Rc) {
+        ii <- sample(1:drows, 1)
+        des.try <- des.p
+        des.try[ii, ] <- sample(des.try[ii, ], shown)
+        da <- as.vector(unlist(apply(des.try, 2, function(x) table(factor(x, 
+            levels = 1:items)))))
+        if (length(da) == items * shown) {
+            crit.try <- abs(sqrt(items * shown) - sum(svd(da)$u)) # 算方差
+            if (crit.try < crit) {
+                des.p <- des.try
+                crit <- crit.try
+            }
+        }
+        crit.vec[i] <- crit
+        if (i > 1) {
+            cc <- cc + 1
+            if (crit.vec[i] < crit.vec[i - 1]) {
+                cc <- 0
+            }
+        }
+    }
+    des.d <- as.data.frame(des.p)
+    for (g in 1:shown) {
+        des.d[, g] <- as.factor(des.d[, g])
+    }
+    # 分version 需要修改
+    des.f <- tryCatch(optBlockC(des.d, rep(tasks, vers), nRepeats = Rd), 
+        error = function(e) return(NULL), warning = function(e) return(NULL))
+    if (is.null(des.f)) {
+        des.x <- des.p
+        warning("Insufficient design space to block into versions; using random assignment instead", 
+            call. = FALSE, immediate. = TRUE)
+    }else {
+        des.x <- des.p[des.f$rows, ]
+    }
+    bal.1w <- table(factor(des.x, levels = 1:items))
+    bal.1w.mn <- mean(bal.1w)
+    bal.1w.sd <- sd(bal.1w)
+    bal.ps <- apply(des.x, 2, function(x) table(factor(x, levels = 1:items)))
+    bal.ps.mn <- mean(bal.ps)
+    bal.ps.sd <- sd(as.vector(bal.ps))
+    bal.2w <- pw.eval(items, shown, drows, des.x)
+    bal.final <- list(one.way = list(tbl = bal.1w, mean = bal.1w.mn, 
+        stdv = bal.1w.sd), col.pos = list(tbl = bal.ps, mean = bal.ps.mn, 
+        stdv = bal.ps.sd), two.way = bal.2w)
+    Rc.crit = list(Rc = Rc, crit.stable = cc, crit.vec = crit.vec)
+    card <- 1:drows
+    ver <- rep(1:vers, rep(tasks, vers))
+    tsk <- rep(1:tasks, vers)
+    design <- cbind(card, ver, tsk, des.x)
+    colnames(design) <- c("card", "version", "task", 
+        paste("item", 1:shown, sep = ""))
+    zvec <- which(bal.ps == 0)
+    if (length(zvec) > 0) {
+        warning("SPARSE DESIGN: Not all items appear in all column positions", 
+            call. = FALSE, immediate. = TRUE)
+    }
+    tb <- Sys.time() - ta
+    if (!is.null(fname)) {
+        write.tab(design, fname)
+    }
+    if (print) {
+        cat("total iterations: ", Rc, "\n", sep = "")
+        cat("critical D: ", crit, ", stable: ", cc, 
+            " iterations\n", sep = "")
+        cat("time elapsed: ", tb, " secs\n", sep = "")
+    }
+    return(list(design = design, balance = bal.final, Rc.crit = Rc.crit, 
+        time.elapsed = tb))
+}
