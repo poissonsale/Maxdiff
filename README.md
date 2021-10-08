@@ -12,3 +12,8 @@
 #version：总共的版本数
 #question_num：每个版本的题目数
 #option_num ：每个题目的选项数
+
+
+maxdiffV2：现在平台上嵌入的生成程序
+tradeoff.des:Maxdiff设计生成的关键函数
+optblock：tradeoff.des生成随机区组设计的关键函数
